@@ -60,12 +60,13 @@ def setup_colab_environment() -> dict:
     from data.processors import get_image_processor, get_tokenizer
     from models.vision_language_model import VisionLanguageModel
 
-    # 检测硬件与最佳混合精度类型（L4/A100/H100 用 bfloat16，T4 自动用 float16）
+    # 检测硬件与最佳混合精度类型（Ampere SM80+ 如 L4/A100/H100 用原生 bfloat16，T4 SM75 自动用 float16 Tensor Core）
     if torch.cuda.is_available():
         device = torch.device("cuda")
         gpu_name = torch.cuda.get_device_name(0)
         vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
-        amp_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        has_native_bf16 = torch.cuda.get_device_capability(0)[0] >= 8
+        amp_dtype = torch.bfloat16 if has_native_bf16 else torch.float16
         print(f"[setup] 检测到云端 GPU: {gpu_name} ({vram_gb:.1f} GB VRAM) | 混合精度: {amp_dtype}")
     else:
         device = torch.device("cpu")
@@ -78,6 +79,7 @@ def setup_colab_environment() -> dict:
     vlm_cfg.lm_model_type = os.getenv("LM_MODEL_TYPE", "HuggingFaceTB/SmolLM2-360M-Instruct")
     vlm_cfg.lm_tokenizer = os.getenv("LM_TOKENIZER", "HuggingFaceTB/SmolLM2-360M-Instruct")
     vlm_cfg.max_img_size = int(os.getenv("MAX_IMG_SIZE", "1024"))
+    vlm_cfg.resize_to_max_side_len = os.getenv("RESIZE_TO_MAX_SIDE_LEN", "0") == "1"
     vlm_cfg.lm_max_length = int(os.getenv("LM_MAX_LENGTH", "1024"))
     vlm_cfg.vlm_checkpoint_path = os.getenv("CHECKPOINT_DIR", "checkpoints")
     vlm_cfg.hf_repo_name = os.getenv("HF_REPO_NAME") or None

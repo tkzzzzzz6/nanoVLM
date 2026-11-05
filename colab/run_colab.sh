@@ -29,14 +29,32 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 # ------------------------ 可通过环境变量覆盖的全局配置 ------------------------
-SESSION="${SESSION:-nanovlm}"
-GPU="${GPU:-T4}"                       # 可选: T4, L4, G4, A100, H100
-HIGH_MEM="${HIGH_MEM:-0}"              # 设为 1 开启 --high-mem (需 Pro/Pro+)
-AUTH="${AUTH:-adc}"                    # 可选: adc 或 oauth2
-SETUP_TIMEOUT="${SETUP_TIMEOUT:-1800}" # setup 超时默认 30 分钟
+# 若未手动指定 SESSION，且当前恰好有 1 个已启动的 Colab 会话（例如 nv），自动复用该会话
+if [[ -z "${SESSION:-}" ]] && [[ -f "$HOME/.config/colab-cli/sessions.json" ]]; then
+    ACTIVE_SESS="$(python3 -c '
+import json, os
+try:
+    data = json.load(open(os.path.expanduser("~/.config/colab-cli/sessions.json")))
+    keys = list(data.keys()) if isinstance(data, dict) else []
+    if len(keys) == 1:
+        print(keys[0])
+except Exception:
+    pass
+' 2>/dev/null || true)"
+    SESSION="${ACTIVE_SESS:-nanovlm}"
+else
+    SESSION="${SESSION:-nanovlm}"
+fi
+
+GPU="${GPU:-T4}"                        # 可选: T4, L4, G4, A100, H100
+HIGH_MEM="${HIGH_MEM:-0}"               # 设为 1 开启 --high-mem (需 Pro/Pro+)
+SETUP_TIMEOUT="${SETUP_TIMEOUT:-1800}"  # setup 超时默认 30 分钟
 TRAIN_TIMEOUT="${TRAIN_TIMEOUT:-14400}" # train 超时默认 4 小时（最高建议 43200/86400）
 
-COLAB_CMD=(colab --auth "$AUTH")
+COLAB_CMD=(colab)
+if [[ -n "${AUTH:-}" ]]; then
+    COLAB_CMD+=(--auth "$AUTH")
+fi
 
 # macOS 防休眠包装（防止长时间训练时合盖/息屏断掉 WebSocket）
 CAFFEINATE=()
@@ -50,7 +68,7 @@ build_env_flags() {
         HF_TOKEN HF_REPO_NAME WANDB_API_KEY WANDB_ENTITY LOG_WANDB
         VIT_MODEL_TYPE LM_MODEL_TYPE LM_TOKENIZER
         DATASET_PATH DATASET_NAMES STREAM_DATASET VAL_SIZE DATA_CUTOFF
-        MAX_IMG_SIZE LM_MAX_LENGTH
+        MAX_IMG_SIZE RESIZE_TO_MAX_SIDE_LEN LM_MAX_LENGTH
         BATCH_SIZE GRAD_ACCUM MAX_STEPS EVAL_INTERVAL LOG_INTERVAL
         LR_MP LR_VISION LR_LANGUAGE RESET_WEIGHTS NUM_WORKERS
     )

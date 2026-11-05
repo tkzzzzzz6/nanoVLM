@@ -257,36 +257,39 @@ class LanguageModelGroupedQueryAttention(nn.Module):
         
         T_kv = k_exp.size(2) # Total sequence length of keys/values
 
+        is_causal = (T_curr == T_kv and T_curr > 1)
+
         # Prepare attention mask for SDPA or manual path
         # attention_mask is (B, T_kv_total_length), 1 for attend, 0 for pad
         additive_attn_mask = None
         if attention_mask is not None:
-            # The current `attention_mask` parameter is assumed to be `[B, total_sequence_length_kv]`
-            # Let's make it `[B, 1, 1, T_kv]` for SDPA.
-            mask_for_keys = attention_mask[:, :T_kv] # Ensure mask matches key length [B, T_kv]
-            additive_attn_mask = (1.0 - mask_for_keys.unsqueeze(1).unsqueeze(2).float()) * torch.finfo(q.dtype).min
-            # This additive_attn_mask shape is [B, 1, 1, T_kv]
+            mask_for_keys = attention_mask[:, :T_kv].bool().view(B, 1, 1, T_kv)
+            if is_causal:
+                causal_mask = torch.tril(torch.ones((T_curr, T_kv), device=x.device, dtype=torch.bool)).view(1, 1, T_curr, T_kv)
+                allow_mask = causal_mask & mask_for_keys
+            else:
+                allow_mask = mask_for_keys
+            additive_attn_mask = torch.zeros_like(allow_mask, dtype=q.dtype).masked_fill(
+                ~allow_mask, torch.finfo(q.dtype).min
+            )
 
         if self.sdpa and x.device.type != 'mps':
-            # During decode, no additional masking needed as [1, T_kv] is naturally causal
-            is_causal = (T_curr == T_kv and T_curr > 1)
+            # PyTorch SDPA forbids setting both explicit attn_mask and is_causal=True;
+            # when additive_attn_mask is present, causality is already baked into it.
             y = torch.nn.functional.scaled_dot_product_attention(
                 q, k_exp, v_exp,
-                attn_mask=additive_attn_mask, 
+                attn_mask=additive_attn_mask,
                 dropout_p=self.dropout if self.training else 0.0,
-                is_causal=is_causal
+                is_causal=(is_causal and additive_attn_mask is None),
             )
         else:
             # Manual attention implementation
             attn = torch.matmul(q, k_exp.transpose(2, 3)) / math.sqrt(self.head_dim) # (B, n_heads, T_curr, T_kv)
-            # During decode: no additional masking needed as [1, T_kv] is naturally causal
-            if T_curr == T_kv and T_curr > 1:
+            if additive_attn_mask is not None:
+                attn = attn + additive_attn_mask
+            elif is_causal:
                 causal_mask_val = torch.tril(torch.ones(T_curr, T_curr, device=x.device, dtype=torch.bool)).view(1, 1, T_curr, T_curr)
-                attn = attn.masked_fill(~causal_mask_val, float('-inf'))
-
-            if additive_attn_mask is not None: # Additive padding mask
-                # additive_attn_mask is [B,1,1,T_kv], needs to be broadcast to [B, n_heads, T_curr, T_kv]
-                attn = attn + additive_attn_mask 
+                attn = attn.masked_fill(~causal_mask_val, torch.finfo(attn.dtype).min)
 
             attn = F.softmax(attn, dim=-1)
             attn = self.attn_dropout(attn)
