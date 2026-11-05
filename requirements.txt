@@ -1,6 +1,6 @@
 # Core dependencies (training & inference)
 # Recommended Python version: 3.12 (requires >=3.10,<3.14)
-datasets>=3.2.0,<4.0.0
+datasets>=4.2.0
 einops>=0.8.0
 huggingface-hub>=0.26.0,<2.0.0
 numpy>=1.26.0,<3.0.0
