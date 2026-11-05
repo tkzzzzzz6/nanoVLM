@@ -1,0 +1,29 @@
+# Core dependencies (training & inference)
+# Recommended Python version: 3.12 (requires >=3.10,<3.14)
+datasets>=3.2.0,<4.0.0
+einops>=0.8.0
+huggingface-hub>=0.26.0,<2.0.0
+numpy>=1.26.0,<3.0.0
+pillow>=10.0.0
+safetensors>=0.4.3
+torch>=2.4.0,<3.0.0
+torchvision>=0.19.0,<1.0.0
+transformers>=4.49.0,<5.0.0
+wandb>=0.18.0
+
+# Optional: evaluation (evaluation.py / run_evaluation.py / eval/*)
+# accelerate>=1.0.0
+# loguru>=0.7.0
+# pandas>=2.2.0
+# pyyaml>=6.0
+# tqdm>=4.66.0
+# git+https://github.com/EvolvingLMMs-Lab/lmms-eval.git
+
+# Optional: plotting (utils/plot_eval_results.py)
+# matplotlib>=3.9.0
+# pandas>=2.2.0
+
+# Optional: development & notebooks
+# ipykernel>=6.29.0
+# pytest>=8.0.0
+# ruff>=0.8.0
